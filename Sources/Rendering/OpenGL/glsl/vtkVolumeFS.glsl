@@ -41,6 +41,8 @@ varying vec3 vertexVCVSOutput;
 
 #ifdef vtkImageLabelOutlineOn
 uniform int outlineThickness;
+
+const int outlineThickness2 = 1;
 uniform float vpWidth;
 uniform float vpHeight;
 uniform mat4 DCWCMatrix;
@@ -405,8 +407,8 @@ vec4 getColorForValue(vec4 tValue, vec3 posIS, vec3 tstep)
   // Saves a bunch of needless checks on the background.
   // TODO define epsilon when building shader?
   if (float(tColor.a) > 0.01) {
-    for (int i = -outlineThickness; i <= outlineThickness; i++) {
-      for (int j = -outlineThickness; j <= outlineThickness; j++) {
+    for (int i = -outlineThickness2; i <= outlineThickness2; i++) {
+      for (int j = -outlineThickness2; j <= outlineThickness2; j++) {
         if (i == 0 || j == 0) {
           continue;
         }
