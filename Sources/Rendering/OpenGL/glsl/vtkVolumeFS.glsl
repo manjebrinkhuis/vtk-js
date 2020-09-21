@@ -413,7 +413,7 @@ vec4 getColorForValue(vec4 tValue, vec3 posIS, vec3 tstep)
   // Saves a bunch of needless checks on the background.
   // TODO define epsilon when building shader?
   if (float(tColor.a) > 0.01) {
-    const int maxIter = 10;
+    const int maxIter = 100;
     for (int i = 1; i <= maxIter; i++) {
       if (i <= outlineThickness) {
         for (int j = 1; j <= maxIter; j++) {
