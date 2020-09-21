@@ -708,6 +708,9 @@ function vtkOpenGLTexture(publicAPI, model) {
       scaledData[0]
     );
 
+    console.log({error: model.context.getError()});
+    console.log({scaledData});
+
     if (model.generateMipmap) {
       model.context.generateMipmap(model.target);
     }
