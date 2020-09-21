@@ -30,6 +30,8 @@ const handledEvents = [
   'EndAnimation',
   'StartMouseMove',
   'MouseMove',
+  'MouseUp',
+  'MouseDown',
   'EndMouseMove',
   'LeftButtonPress',
   'LeftButtonRelease',

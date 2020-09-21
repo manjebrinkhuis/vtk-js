@@ -431,25 +431,34 @@ vec4 getColorForValue(vec4 tValue, vec3 posIS, vec3 tstep)
   // Saves a bunch of needless checks on the background.
   // TODO define epsilon when building shader?
   if (float(tColor.a) > 0.01) {
-    for (int i = -outlineThickness; i <= outlineThickness; i++) {
-      for (int j = -outlineThickness; j <= outlineThickness; j++) {
-        if (i == 0 || j == 0) {
-          continue;
-        }
+    const int maxIter = 10;
+    for (int i = 1; i <= maxIter; i++) {
+      if (i <= outlineThickness) {
+        for (int j = 1; j <= maxIter; j++) {
+          if (j <= outlineThickness) {
+            for (int s = 0; s <= 1; s++) {
+              int sign = (s > 0) ? 1 : -1;
+              vec4 neighborPixelCoord = vec4(
+                gl_FragCoord.x + (float(sign) * float(i)),
+                gl_FragCoord.y + (float(sign) * float(j)),
+                gl_FragCoord.z, gl_FragCoord.w
+              );
 
-        vec4 neighborPixelCoord = vec4(gl_FragCoord.x + float(i),
-          gl_FragCoord.y + float(j),
-          gl_FragCoord.z, gl_FragCoord.w);
+              vec3 neighborPosIS = fragCoordToIndexSpace(neighborPixelCoord);
+              vec4 value = getTextureValue(neighborPosIS);
 
-        vec3 neighborPosIS = fragCoordToIndexSpace(neighborPixelCoord);
-        vec4 value = getTextureValue(neighborPosIS);
-
-        // If any of my neighbours are not the same value as I
-        // am, this means I am on the border of the segment.
-        // We can break the loops
-        if (any(notEqual(value, centerValue))) {
-          pixelOnBorder = true;
-          break;
+              // If any of my neighbours are not the same value as I
+              // am, this means I am on the border of the segment.
+              // We can break the loops
+              if (any(notEqual(value, centerValue))) {
+                pixelOnBorder = true;
+                break;
+              }
+            }
+            if (pixelOnBorder == true) {
+              break;
+            }
+          }
         }
       }
 
