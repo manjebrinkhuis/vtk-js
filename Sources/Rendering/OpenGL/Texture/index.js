@@ -714,7 +714,7 @@ function vtkOpenGLTexture(publicAPI, model) {
       );
 
       const hasError = model.context.getError();
-      if (maxTries > 0) {
+      if (hasError && maxTries > 0) {
 
         // if (model.context && model.handle) {
         //   publicAPI.destroyTexture();
