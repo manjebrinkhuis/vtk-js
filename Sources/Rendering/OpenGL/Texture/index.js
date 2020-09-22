@@ -669,6 +669,8 @@ function vtkOpenGLTexture(publicAPI, model) {
   publicAPI.create2DFromRaw = (width, height, numComps, dataType, data) => {
 
     const tryForDims = (width, height, maxTries = 4) => {
+
+      console.log({maxTries})
       // Now determine the texture parameters using the arguments.
       publicAPI.getOpenGLDataType(dataType);
       publicAPI.getInternalFormat(dataType, numComps);
@@ -1149,6 +1151,9 @@ function vtkOpenGLTexture(publicAPI, model) {
     }
 
     const tryForMaxTexDim = (maxTexDim, maxTries = 4) => {
+
+      console.log({maxTries});
+
       const res = computeScaleOffsets(numComps, numPixelsIn, data);
 
       let volCopyData = (outArray, outIdx, inValue, smin, smax) => {
