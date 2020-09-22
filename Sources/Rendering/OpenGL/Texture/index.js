@@ -712,15 +712,20 @@ function vtkOpenGLTexture(publicAPI, model) {
         scaledData[0]
       );
 
-      if (model.context.getError() && maxTries > -1) {
+      const hasError = model.context.getError();
+      if (hasError && maxTries > -1) {
+
+        publicAPI.destroyTexture();
 
         console.log({
-          error: model.context.getError(),
+          error: hasError,
           maxTries,
           width, height
         });
-        
-        tryForDims(width / 2, height / 2, maxTries - 1);
+
+        if (width / 2 > 1 && height / 2 > 1) {
+          tryForDims(width / 2, height / 2, maxTries - 1);
+        }
       }
     }
 
@@ -1277,9 +1282,17 @@ function vtkOpenGLTexture(publicAPI, model) {
         newArray
       );
 
-      if (model.context.getError() && maxTries > -1) {
+      const hasError = model.context.getError();
+      
+      if (hasError && maxTries > -1) {
+        publicAPI.destroyTexture();
+
         maxTexDim = maxTexDim / 2;
-        console.log({error: model.context.getError(), maxTries, maxTexDim});
+        
+        console.log({
+          error: hasError, maxTries, maxTexDim
+        });
+        
         tryForMaxTexDim(maxTexDim, maxTries - 1);
       }
     }
