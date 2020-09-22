@@ -715,7 +715,9 @@ function vtkOpenGLTexture(publicAPI, model) {
       const hasError = model.context.getError();
       if (hasError && maxTries > -1) {
 
-        publicAPI.destroyTexture();
+        if (model.context && model.handle) {
+          model.context.deleteTexture(model.handle);
+        }
 
         console.log({
           error: hasError,
@@ -1283,9 +1285,10 @@ function vtkOpenGLTexture(publicAPI, model) {
       );
 
       const hasError = model.context.getError();
-      
       if (hasError && maxTries > -1) {
-        publicAPI.destroyTexture();
+        if (model.context && model.handle) {
+          model.context.deleteTexture(model.handle);
+        }
 
         maxTexDim = maxTexDim / 2;
         
