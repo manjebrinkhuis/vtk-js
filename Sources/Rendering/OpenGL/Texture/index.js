@@ -668,20 +668,19 @@ function vtkOpenGLTexture(publicAPI, model) {
   //----------------------------------------------------------------------------
   publicAPI.create2DFromRaw = (width, height, numComps, dataType, data) => {
 
-    // Now determine the texture parameters using the arguments.
-    publicAPI.getOpenGLDataType(dataType);
-    publicAPI.getInternalFormat(dataType, numComps);
-    publicAPI.getFormat(dataType, numComps);
-
-    if (!model.internalFormat || !model.format || !model.openGLDataType) {
-      vtkErrorMacro('Failed to determine texture parameters.');
-      return false;
-    }
-
-    model.target = model.context.TEXTURE_2D;
-    model.components = numComps;
-
     const tryForDims = (width, height, maxTries = 4) => {
+      // Now determine the texture parameters using the arguments.
+      publicAPI.getOpenGLDataType(dataType);
+      publicAPI.getInternalFormat(dataType, numComps);
+      publicAPI.getFormat(dataType, numComps);
+
+      if (!model.internalFormat || !model.format || !model.openGLDataType) {
+        vtkErrorMacro('Failed to determine texture parameters.');
+        return false;
+      }
+
+      model.target = model.context.TEXTURE_2D;
+      model.components = numComps;
 
       model.width = width;
       model.height = height;
@@ -716,7 +715,7 @@ function vtkOpenGLTexture(publicAPI, model) {
       if (hasError && maxTries > -1) {
 
         if (model.context && model.handle) {
-          model.context.deleteTexture(model.handle);
+          publicAPI.destroyTexture();
         }
 
         console.log({
@@ -1129,50 +1128,8 @@ function vtkOpenGLTexture(publicAPI, model) {
     // and maybe no float textures
 
     // compute min and max values
-    const res = computeScaleOffsets(numComps, numPixelsIn, data);
 
-    let volCopyData = (outArray, outIdx, inValue, smin, smax) => {
-      outArray[outIdx] = inValue;
-    };
-    let dataTypeToUse = VtkDataTypes.UNSIGNED_CHAR;
-    // unsigned char gets used as is
-    if (dataType === VtkDataTypes.UNSIGNED_CHAR) {
-      for (let c = 0; c < numComps; ++c) {
-        res.offset[c] = 0.0;
-        res.scale[c] = 255.0;
-      }
-    } else if (
-      model.context.getExtension('OES_texture_float') &&
-      model.context.getExtension('OES_texture_float_linear')
-    ) {
-      // use float textures scaled to 0.0 to 1.0
-      dataTypeToUse = VtkDataTypes.FLOAT;
-      volCopyData = (outArray, outIdx, inValue, soffset, sscale) => {
-        outArray[outIdx] = (inValue - soffset) / sscale;
-      };
-    } else {
-      // worst case, scale data to uchar
-      dataTypeToUse = VtkDataTypes.UNSIGNED_CHAR;
-      volCopyData = (outArray, outIdx, inValue, soffset, sscale) => {
-        outArray[outIdx] = (255.0 * (inValue - soffset)) / sscale;
-      };
-    }
 
-    // Now determine the texture parameters using the arguments.
-    publicAPI.getOpenGLDataType(dataTypeToUse);
-    publicAPI.getInternalFormat(dataTypeToUse, numComps);
-    publicAPI.getFormat(dataTypeToUse, numComps);
-
-    if (!model.internalFormat || !model.format || !model.openGLDataType) {
-      vtkErrorMacro('Failed to determine texture parameters.');
-      return false;
-    }
-
-    // have to pack this 3D texture into pot 2D texture
-    model.target = model.context.TEXTURE_2D;
-    model.components = numComps;
-    model.depth = 1;
-    model.numberOfDimensions = 2;
 
     // MAX_TEXTURE_SIZE gives the max dimensions that can be supported by the GPU,
     // but it doesn't mean it will fit in memory. If we have to use a float data type
@@ -1192,6 +1149,50 @@ function vtkOpenGLTexture(publicAPI, model) {
     }
 
     const tryForMaxTexDim = (maxTexDim, maxTries = 4) => {
+      const res = computeScaleOffsets(numComps, numPixelsIn, data);
+
+      let volCopyData = (outArray, outIdx, inValue, smin, smax) => {
+        outArray[outIdx] = inValue;
+      };
+      let dataTypeToUse = VtkDataTypes.UNSIGNED_CHAR;
+      // unsigned char gets used as is
+      if (dataType === VtkDataTypes.UNSIGNED_CHAR) {
+        for (let c = 0; c < numComps; ++c) {
+          res.offset[c] = 0.0;
+          res.scale[c] = 255.0;
+        }
+      } else if (
+        model.context.getExtension('OES_texture_float') &&
+        model.context.getExtension('OES_texture_float_linear')
+      ) {
+        // use float textures scaled to 0.0 to 1.0
+        dataTypeToUse = VtkDataTypes.FLOAT;
+        volCopyData = (outArray, outIdx, inValue, soffset, sscale) => {
+          outArray[outIdx] = (inValue - soffset) / sscale;
+        };
+      } else {
+        // worst case, scale data to uchar
+        dataTypeToUse = VtkDataTypes.UNSIGNED_CHAR;
+        volCopyData = (outArray, outIdx, inValue, soffset, sscale) => {
+          outArray[outIdx] = (255.0 * (inValue - soffset)) / sscale;
+        };
+      }
+
+      // Now determine the texture parameters using the arguments.
+      publicAPI.getOpenGLDataType(dataTypeToUse);
+      publicAPI.getInternalFormat(dataTypeToUse, numComps);
+      publicAPI.getFormat(dataTypeToUse, numComps);
+
+      if (!model.internalFormat || !model.format || !model.openGLDataType) {
+        vtkErrorMacro('Failed to determine texture parameters.');
+        return false;
+      }
+
+      // have to pack this 3D texture into pot 2D texture
+      model.target = model.context.TEXTURE_2D;
+      model.components = numComps;
+      model.depth = 1;
+      model.numberOfDimensions = 2;
       
       // compute estimate for XY subsample
       let xstride = 1;
@@ -1286,9 +1287,7 @@ function vtkOpenGLTexture(publicAPI, model) {
 
       const hasError = model.context.getError();
       if (hasError && maxTries > -1) {
-        if (model.context && model.handle) {
-          model.context.deleteTexture(model.handle);
-        }
+        publicAPI.destroyTexture()
 
         maxTexDim = maxTexDim / 2;
         
