@@ -422,12 +422,12 @@ vec4 getColorForValue(vec4 tValue, vec3 posIS, vec3 tstep)
       for (int j = 1; j <= maxIter; j++) {
     
         if (i > outlineThickness || j > outlineThickness) {
-          continue
+          continue;
         }
 
         for (int s = -1; s <= 1; s++) {
           if (s == 0) {
-            continue
+            continue;
           }
           
           vec4 neighborPixelCoord = vec4(
