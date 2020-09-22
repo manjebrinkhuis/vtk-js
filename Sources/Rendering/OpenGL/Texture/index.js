@@ -670,7 +670,6 @@ function vtkOpenGLTexture(publicAPI, model) {
 
     const tryForDims = (width, height, maxTries = 4) => {
 
-      console.log({maxTries})
       // Now determine the texture parameters using the arguments.
       publicAPI.getOpenGLDataType(dataType);
       publicAPI.getInternalFormat(dataType, numComps);
@@ -714,18 +713,7 @@ function vtkOpenGLTexture(publicAPI, model) {
       );
 
       const hasError = model.context.getError();
-      if (maxTries > 0) {
-
-        // if (model.context && model.handle) {
-        //   publicAPI.destroyTexture();
-        // }
-
-        console.log({
-          error: hasError,
-          maxTries,
-          width, height
-        });
-
+      if (hasError && maxTries > 0) {
         if (width / 2 > 1 && height / 2 > 1) {
           tryForDims(width / 2, height / 2, maxTries - 1);
         }
@@ -1128,8 +1116,53 @@ function vtkOpenGLTexture(publicAPI, model) {
 
     // not webgl2, deal with webgl1, no 3d textures
     // and maybe no float textures
-
+    
     // compute min and max values
+    const res = computeScaleOffsets(numComps, numPixelsIn, data);     
+    
+    let volCopyData = (outArray, outIdx, inValue, smin, smax) => {
+      outArray[outIdx] = inValue;
+    };
+      
+    let dataTypeToUse = VtkDataTypes.UNSIGNED_CHAR;
+    // unsigned char gets used as is
+    if (dataType === VtkDataTypes.UNSIGNED_CHAR) {
+      for (let c = 0; c < numComps; ++c) {
+        res.offset[c] = 0.0;
+        res.scale[c] = 255.0;
+      }
+    } else if (
+      model.context.getExtension('OES_texture_float') &&
+      model.context.getExtension('OES_texture_float_linear')
+    ) {
+      // use float textures scaled to 0.0 to 1.0
+      dataTypeToUse = VtkDataTypes.FLOAT;
+      volCopyData = (outArray, outIdx, inValue, soffset, sscale) => {
+        outArray[outIdx] = (inValue - soffset) / sscale;
+      };
+    } else {
+      // worst case, scale data to uchar
+      dataTypeToUse = VtkDataTypes.UNSIGNED_CHAR;
+      volCopyData = (outArray, outIdx, inValue, soffset, sscale) => {
+        outArray[outIdx] = (255.0 * (inValue - soffset)) / sscale;
+      };
+    }
+
+    // Now determine the texture parameters using the arguments.
+    publicAPI.getOpenGLDataType(dataTypeToUse);
+    publicAPI.getInternalFormat(dataTypeToUse, numComps);
+    publicAPI.getFormat(dataTypeToUse, numComps);
+
+    if (!model.internalFormat || !model.format || !model.openGLDataType) {
+      vtkErrorMacro('Failed to determine texture parameters.');
+      return false;
+    }
+
+    // have to pack this 3D texture into pot 2D texture
+    model.target = model.context.TEXTURE_2D;
+    model.components = numComps;
+    model.depth = 1;
+    model.numberOfDimensions = 2;
 
     // MAX_TEXTURE_SIZE gives the max dimensions that can be supported by the GPU,
     // but it doesn't mean it will fit in memory. If we have to use a float data type
@@ -1140,170 +1173,104 @@ function vtkOpenGLTexture(publicAPI, model) {
     // denser textures based on our data type.
     // TODO: try to fit in the biggest supported texture, catch the gl error if it
     // does not fix (OUT_OF_MEMORY), then attempt with smaller texture
-    let dataTypeToUse = VtkDataTypes.UNSIGNED_CHAR;
     let maxTexDim = model.context.getParameter(model.context.MAX_TEXTURE_SIZE);
-    
     if (
       maxTexDim > 4096 &&
       (dataTypeToUse === VtkDataTypes.FLOAT || numComps >= 3)
     ) { 
       maxTexDim = 4096;
     }
+    
+    // compute estimate for XY subsample
+    let xstride = 1;
+    let ystride = 1;
+    if (numPixelsIn > maxTexDim * maxTexDim) {
+      xstride = Math.ceil(Math.sqrt(numPixelsIn / (maxTexDim * maxTexDim)));
+      ystride = xstride;
+    }
 
-    const tryForMaxTexDim = (maxTexDim, maxTries = 4) => {
+    let targetWidth = Math.sqrt(numPixelsIn) / xstride;
+    targetWidth = vtkMath.nearestPowerOfTwo(targetWidth);
+    // determine X reps
+    const xreps = Math.floor((targetWidth * xstride) / width);
+    const yreps = Math.ceil(depth / xreps);
+    const targetHeight = vtkMath.nearestPowerOfTwo((height * yreps) / ystride);
 
-      const res = computeScaleOffsets(numComps, numPixelsIn, data);
+    model.width = targetWidth;
+    model.height = targetHeight;
+    model.openGLRenderWindow.activateTexture(publicAPI);
+    publicAPI.createTexture();
+    publicAPI.bind();
 
-      let volCopyData = (outArray, outIdx, inValue, smin, smax) => {
-        outArray[outIdx] = inValue;
-      };
-      // unsigned char gets used as is
-      if (dataType === VtkDataTypes.UNSIGNED_CHAR) {
-        for (let c = 0; c < numComps; ++c) {
-          res.offset[c] = 0.0;
-          res.scale[c] = 255.0;
-        }
-      } else if (
-        model.context.getExtension('OES_texture_float') &&
-        model.context.getExtension('OES_texture_float_linear')
-      ) {
-        // use float textures scaled to 0.0 to 1.0
-        dataTypeToUse = VtkDataTypes.FLOAT;
-        volCopyData = (outArray, outIdx, inValue, soffset, sscale) => {
-          outArray[outIdx] = (inValue - soffset) / sscale;
-        };
-      } else {
-        // worst case, scale data to uchar
-        dataTypeToUse = VtkDataTypes.UNSIGNED_CHAR;
-        volCopyData = (outArray, outIdx, inValue, soffset, sscale) => {
-          outArray[outIdx] = (255.0 * (inValue - soffset)) / sscale;
-        };
-      }
+    // store the information, we will need it later
+    model.volumeInfo.xreps = xreps;
+    model.volumeInfo.yreps = yreps;
+    model.volumeInfo.xstride = xstride;
+    model.volumeInfo.ystride = ystride;
+    model.volumeInfo.offset = res.offset;
+    model.volumeInfo.scale = res.scale;
 
-      // Now determine the texture parameters using the arguments.
-      publicAPI.getOpenGLDataType(dataTypeToUse);
-      publicAPI.getInternalFormat(dataTypeToUse, numComps);
-      publicAPI.getFormat(dataTypeToUse, numComps);
+    // OK stuff the data into the 2d TEXTURE
 
-      if (!model.internalFormat || !model.format || !model.openGLDataType) {
-        vtkErrorMacro('Failed to determine texture parameters.');
-        return false;
-      }
+    // first allocate the new texture
+    let newArray;
+    const pixCount = targetWidth * targetHeight * numComps;
+    if (dataTypeToUse === VtkDataTypes.FLOAT) {
+      newArray = new Float32Array(pixCount);
+    } else {
+      newArray = new Uint8Array(pixCount);
+    }
 
-      // have to pack this 3D texture into pot 2D texture
-      model.target = model.context.TEXTURE_2D;
-      model.components = numComps;
-      model.depth = 1;
-      model.numberOfDimensions = 2;
-      
-      // compute estimate for XY subsample
-      let xstride = 1;
-      let ystride = 1;
-      if (numPixelsIn > maxTexDim * maxTexDim) {
-        xstride = Math.ceil(Math.sqrt(numPixelsIn / (maxTexDim * maxTexDim)));
-        ystride = xstride;
-      }
+    // then stuff the data into it, nothing fancy right now
+    // for stride
+    let outIdx = 0;
 
-      let targetWidth = Math.sqrt(numPixelsIn) / xstride;
-      targetWidth = vtkMath.nearestPowerOfTwo(targetWidth);
-      // determine X reps
-      const xreps = Math.floor((targetWidth * xstride) / width);
-      const yreps = Math.ceil(depth / xreps);
-      const targetHeight = vtkMath.nearestPowerOfTwo((height * yreps) / ystride);
+    const tileWidth = Math.floor(width / xstride);
+    const tileHeight = Math.floor(height / ystride);
 
-      model.width = targetWidth;
-      model.height = targetHeight;
-      model.openGLRenderWindow.activateTexture(publicAPI);
-      publicAPI.createTexture();
-      publicAPI.bind();
-  
-      // store the information, we will need it later
-      model.volumeInfo.xreps = xreps;
-      model.volumeInfo.yreps = yreps;
-      model.volumeInfo.xstride = xstride;
-      model.volumeInfo.ystride = ystride;
-      model.volumeInfo.offset = res.offset;
-      model.volumeInfo.scale = res.scale;
-  
-      // OK stuff the data into the 2d TEXTURE
-  
-      // first allocate the new texture
-      let newArray;
-      const pixCount = targetWidth * targetHeight * numComps;
-      if (dataTypeToUse === VtkDataTypes.FLOAT) {
-        newArray = new Float32Array(pixCount);
-      } else {
-        newArray = new Uint8Array(pixCount);
-      }
-  
-      // then stuff the data into it, nothing fancy right now
-      // for stride
-      let outIdx = 0;
-  
-      const tileWidth = Math.floor(width / xstride);
-      const tileHeight = Math.floor(height / ystride);
-  
-      for (let yRep = 0; yRep < yreps; yRep++) {
-        const xrepsThisRow = Math.min(xreps, depth - yRep * xreps);
-        const outXContIncr =
-          numComps * (model.width - xrepsThisRow * Math.floor(width / xstride));
-        for (let tileY = 0; tileY < tileHeight; tileY++) {
-          for (let xRep = 0; xRep < xrepsThisRow; xRep++) {
-            const inOffset =
-              numComps *
-              ((yRep * xreps + xRep) * width * height + ystride * tileY * width);
-  
-            for (let tileX = 0; tileX < tileWidth; tileX++) {
-              // copy value
-              for (let nc = 0; nc < numComps; nc++) {
-                volCopyData(
-                  newArray,
-                  outIdx,
-                  data[inOffset + xstride * tileX * numComps + nc],
-                  res.offset[nc],
-                  res.scale[nc]
-                );
-                outIdx++;
-              }
+    for (let yRep = 0; yRep < yreps; yRep++) {
+      const xrepsThisRow = Math.min(xreps, depth - yRep * xreps);
+      const outXContIncr =
+        numComps * (model.width - xrepsThisRow * Math.floor(width / xstride));
+      for (let tileY = 0; tileY < tileHeight; tileY++) {
+        for (let xRep = 0; xRep < xrepsThisRow; xRep++) {
+          const inOffset =
+            numComps *
+            ((yRep * xreps + xRep) * width * height + ystride * tileY * width);
+
+          for (let tileX = 0; tileX < tileWidth; tileX++) {
+            // copy value
+            for (let nc = 0; nc < numComps; nc++) {
+              volCopyData(
+                newArray,
+                outIdx,
+                data[inOffset + xstride * tileX * numComps + nc],
+                res.offset[nc],
+                res.scale[nc]
+              );
+              outIdx++;
             }
           }
-          outIdx += outXContIncr;
         }
-      }
-  
-      // Source texture data from the PBO.
-      // model.context.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-      model.context.pixelStorei(model.context.UNPACK_ALIGNMENT, 1);
-  
-      model.context.texImage2D(
-        model.target,
-        0,
-        model.internalFormat,
-        model.width,
-        model.height,
-        0,
-        model.format,
-        model.openGLDataType,
-        newArray
-      );
-
-      const hasError = model.context.getError();
-      if (hasError && maxTries > 0) {
-        // publicAPI.destroyTexture()
-
-        maxTexDim = maxTexDim / 2;
-        
-        console.log({
-          error: hasError, maxTries, maxTexDim
-        });
-        
-        tryForMaxTexDim(maxTexDim, maxTries - 1);
+        outIdx += outXContIncr;
       }
     }
 
-    tryForMaxTexDim(maxTexDim); 
+    // Source texture data from the PBO.
+    // model.context.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    model.context.pixelStorei(model.context.UNPACK_ALIGNMENT, 1);
 
-
+    model.context.texImage2D(
+      model.target,
+      0,
+      model.internalFormat,
+      model.width,
+      model.height,
+      0,
+      model.format,
+      model.openGLDataType,
+      newArray
+    );
 
     publicAPI.deactivate();
     return true;
