@@ -413,9 +413,9 @@ vec4 getColorForValue(vec4 tValue, vec3 posIS, vec3 tstep)
   // Saves a bunch of needless checks on the background.
   // TODO define epsilon when building shader?
   if (float(tColor.a) > 0.01) {
-    // Set the maximum number of iteractions to a constant 
-    // because using outlineThickness (a uniform) leads to errors
-    // on some GPUs.
+    // Set the maximum number of iterations to a constant 
+    // because using outlineThickness (a uniform) in a for loop leads 
+    // to errors on some GPUs.
     const int maxIter = 10;
     
     for (int i = 1; i <= maxIter; i++) {
@@ -451,6 +451,9 @@ vec4 getColorForValue(vec4 tValue, vec3 posIS, vec3 tstep)
         if (pixelOnBorder == true) {
           break;
         }
+      }
+      if (pixelOnBorder == true) {
+        break;
       }
     }
     // If I am on the border, I am displayed at full opacity
