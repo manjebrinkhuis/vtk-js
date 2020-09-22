@@ -714,11 +714,11 @@ function vtkOpenGLTexture(publicAPI, model) {
       );
 
       const hasError = model.context.getError();
-      if (maxTries > -1) {
+      if (maxTries > 0) {
 
-        if (model.context && model.handle) {
-          publicAPI.destroyTexture();
-        }
+        // if (model.context && model.handle) {
+        //   publicAPI.destroyTexture();
+        // }
 
         console.log({
           error: hasError,
@@ -1288,8 +1288,8 @@ function vtkOpenGLTexture(publicAPI, model) {
       );
 
       const hasError = model.context.getError();
-      if (hasError && maxTries > -1) {
-        publicAPI.destroyTexture()
+      if (maxTries > 0) {
+        // publicAPI.destroyTexture()
 
         maxTexDim = maxTexDim / 2;
         
@@ -1302,6 +1302,8 @@ function vtkOpenGLTexture(publicAPI, model) {
     }
 
     tryForMaxTexDim(maxTexDim); 
+
+
 
     publicAPI.deactivate();
     return true;
