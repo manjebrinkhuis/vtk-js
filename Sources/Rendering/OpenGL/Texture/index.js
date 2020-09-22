@@ -667,6 +667,7 @@ function vtkOpenGLTexture(publicAPI, model) {
 
   //----------------------------------------------------------------------------
   publicAPI.create2DFromRaw = (width, height, numComps, dataType, data) => {
+
     // Now determine the texture parameters using the arguments.
     publicAPI.getOpenGLDataType(dataType);
     publicAPI.getInternalFormat(dataType, numComps);
@@ -679,37 +680,51 @@ function vtkOpenGLTexture(publicAPI, model) {
 
     model.target = model.context.TEXTURE_2D;
     model.components = numComps;
-    model.width = width;
-    model.height = height;
-    model.depth = 1;
-    model.numberOfDimensions = 2;
-    model.openGLRenderWindow.activateTexture(publicAPI);
-    publicAPI.createTexture();
-    publicAPI.bind();
 
-    // Create an array of texture with one texture
-    const dataArray = [data];
-    const pixData = updateArrayDataType(dataType, dataArray);
-    const scaledData = scaleTextureToHighestPowerOfTwo(pixData);
+    const tryForDims = (width, height, maxTries = 4) => {
 
-    // Source texture data from the PBO.
-    // model.context.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    model.context.pixelStorei(model.context.UNPACK_ALIGNMENT, 1);
+      model.width = width;
+      model.height = height;
+      model.depth = 1;
+      model.numberOfDimensions = 2;
+      model.openGLRenderWindow.activateTexture(publicAPI);
+      publicAPI.createTexture();
+      publicAPI.bind();
+      
+      // Create an array of texture with one texture
+      const dataArray = [data];
+      const pixData = updateArrayDataType(dataType, dataArray);
+      const scaledData = scaleTextureToHighestPowerOfTwo(pixData);
+      
+      // Source texture data from the PBO.
+      // model.context.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      model.context.pixelStorei(model.context.UNPACK_ALIGNMENT, 1);
+      
+      model.context.texImage2D(
+        model.target,
+        0,
+        model.internalFormat,
+        model.width,
+        model.height,
+        0,
+        model.format,
+        model.openGLDataType,
+        scaledData[0]
+      );
 
-    model.context.texImage2D(
-      model.target,
-      0,
-      model.internalFormat,
-      model.width,
-      model.height,
-      0,
-      model.format,
-      model.openGLDataType,
-      scaledData[0]
-    );
+      if (model.context.getError() && maxTries > -1) {
 
-    console.log({error: model.context.getError()});
-    console.log({scaledData});
+        console.log({
+          error: model.context.getError(),
+          maxTries,
+          width, height
+        });
+        
+        tryForDims(width / 2, height / 2, maxTries - 1);
+      }
+    }
+
+    tryForDims(width, height);
 
     if (model.generateMipmap) {
       model.context.generateMipmap(model.target);
@@ -1169,95 +1184,107 @@ function vtkOpenGLTexture(publicAPI, model) {
       maxTexDim = 4096;
     }
 
-    // compute estimate for XY subsample
-    let xstride = 1;
-    let ystride = 1;
-    if (numPixelsIn > maxTexDim * maxTexDim) {
-      xstride = Math.ceil(Math.sqrt(numPixelsIn / (maxTexDim * maxTexDim)));
-      ystride = xstride;
-    }
-    let targetWidth = Math.sqrt(numPixelsIn) / xstride;
-    targetWidth = vtkMath.nearestPowerOfTwo(targetWidth);
-    // determine X reps
-    const xreps = Math.floor((targetWidth * xstride) / width);
-    const yreps = Math.ceil(depth / xreps);
-    const targetHeight = vtkMath.nearestPowerOfTwo((height * yreps) / ystride);
+    const tryForMaxTexDim = (maxTexDim, maxTries = 4) => {
+      
+      // compute estimate for XY subsample
+      let xstride = 1;
+      let ystride = 1;
+      if (numPixelsIn > maxTexDim * maxTexDim) {
+        xstride = Math.ceil(Math.sqrt(numPixelsIn / (maxTexDim * maxTexDim)));
+        ystride = xstride;
+      }
 
-    model.width = targetWidth;
-    model.height = targetHeight;
-    model.openGLRenderWindow.activateTexture(publicAPI);
-    publicAPI.createTexture();
-    publicAPI.bind();
+      let targetWidth = Math.sqrt(numPixelsIn) / xstride;
+      targetWidth = vtkMath.nearestPowerOfTwo(targetWidth);
+      // determine X reps
+      const xreps = Math.floor((targetWidth * xstride) / width);
+      const yreps = Math.ceil(depth / xreps);
+      const targetHeight = vtkMath.nearestPowerOfTwo((height * yreps) / ystride);
 
-    // store the information, we will need it later
-    model.volumeInfo.xreps = xreps;
-    model.volumeInfo.yreps = yreps;
-    model.volumeInfo.xstride = xstride;
-    model.volumeInfo.ystride = ystride;
-    model.volumeInfo.offset = res.offset;
-    model.volumeInfo.scale = res.scale;
-
-    // OK stuff the data into the 2d TEXTURE
-
-    // first allocate the new texture
-    let newArray;
-    const pixCount = targetWidth * targetHeight * numComps;
-    if (dataTypeToUse === VtkDataTypes.FLOAT) {
-      newArray = new Float32Array(pixCount);
-    } else {
-      newArray = new Uint8Array(pixCount);
-    }
-
-    // then stuff the data into it, nothing fancy right now
-    // for stride
-    let outIdx = 0;
-
-    const tileWidth = Math.floor(width / xstride);
-    const tileHeight = Math.floor(height / ystride);
-
-    for (let yRep = 0; yRep < yreps; yRep++) {
-      const xrepsThisRow = Math.min(xreps, depth - yRep * xreps);
-      const outXContIncr =
-        numComps * (model.width - xrepsThisRow * Math.floor(width / xstride));
-      for (let tileY = 0; tileY < tileHeight; tileY++) {
-        for (let xRep = 0; xRep < xrepsThisRow; xRep++) {
-          const inOffset =
-            numComps *
-            ((yRep * xreps + xRep) * width * height + ystride * tileY * width);
-
-          for (let tileX = 0; tileX < tileWidth; tileX++) {
-            // copy value
-            for (let nc = 0; nc < numComps; nc++) {
-              volCopyData(
-                newArray,
-                outIdx,
-                data[inOffset + xstride * tileX * numComps + nc],
-                res.offset[nc],
-                res.scale[nc]
-              );
-              outIdx++;
+      model.width = targetWidth;
+      model.height = targetHeight;
+      model.openGLRenderWindow.activateTexture(publicAPI);
+      publicAPI.createTexture();
+      publicAPI.bind();
+  
+      // store the information, we will need it later
+      model.volumeInfo.xreps = xreps;
+      model.volumeInfo.yreps = yreps;
+      model.volumeInfo.xstride = xstride;
+      model.volumeInfo.ystride = ystride;
+      model.volumeInfo.offset = res.offset;
+      model.volumeInfo.scale = res.scale;
+  
+      // OK stuff the data into the 2d TEXTURE
+  
+      // first allocate the new texture
+      let newArray;
+      const pixCount = targetWidth * targetHeight * numComps;
+      if (dataTypeToUse === VtkDataTypes.FLOAT) {
+        newArray = new Float32Array(pixCount);
+      } else {
+        newArray = new Uint8Array(pixCount);
+      }
+  
+      // then stuff the data into it, nothing fancy right now
+      // for stride
+      let outIdx = 0;
+  
+      const tileWidth = Math.floor(width / xstride);
+      const tileHeight = Math.floor(height / ystride);
+  
+      for (let yRep = 0; yRep < yreps; yRep++) {
+        const xrepsThisRow = Math.min(xreps, depth - yRep * xreps);
+        const outXContIncr =
+          numComps * (model.width - xrepsThisRow * Math.floor(width / xstride));
+        for (let tileY = 0; tileY < tileHeight; tileY++) {
+          for (let xRep = 0; xRep < xrepsThisRow; xRep++) {
+            const inOffset =
+              numComps *
+              ((yRep * xreps + xRep) * width * height + ystride * tileY * width);
+  
+            for (let tileX = 0; tileX < tileWidth; tileX++) {
+              // copy value
+              for (let nc = 0; nc < numComps; nc++) {
+                volCopyData(
+                  newArray,
+                  outIdx,
+                  data[inOffset + xstride * tileX * numComps + nc],
+                  res.offset[nc],
+                  res.scale[nc]
+                );
+                outIdx++;
+              }
             }
           }
+          outIdx += outXContIncr;
         }
-        outIdx += outXContIncr;
+      }
+  
+      // Source texture data from the PBO.
+      // model.context.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      model.context.pixelStorei(model.context.UNPACK_ALIGNMENT, 1);
+  
+      model.context.texImage2D(
+        model.target,
+        0,
+        model.internalFormat,
+        model.width,
+        model.height,
+        0,
+        model.format,
+        model.openGLDataType,
+        newArray
+      );
+
+      if (model.context.getError() && maxTries > -1) {
+        maxTexDim = maxTexDim / 2;
+        console.log({error: model.context.getError(), maxTries, maxTexDim});
+        tryForMaxTexDim(maxTexDim, maxTries - 1);
       }
     }
 
-    // Source texture data from the PBO.
-    // model.context.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    model.context.pixelStorei(model.context.UNPACK_ALIGNMENT, 1);
-
-    model.context.texImage2D(
-      model.target,
-      0,
-      model.internalFormat,
-      model.width,
-      model.height,
-      0,
-      model.format,
-      model.openGLDataType,
-      newArray
-    );
+    tryForMaxTexDim(maxTexDim); 
 
     publicAPI.deactivate();
     return true;
