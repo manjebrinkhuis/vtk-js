@@ -1131,8 +1131,6 @@ function vtkOpenGLTexture(publicAPI, model) {
 
     // compute min and max values
 
-
-
     // MAX_TEXTURE_SIZE gives the max dimensions that can be supported by the GPU,
     // but it doesn't mean it will fit in memory. If we have to use a float data type
     // or 4 components, there are good chances that the texture size will blow up
@@ -1142,24 +1140,23 @@ function vtkOpenGLTexture(publicAPI, model) {
     // denser textures based on our data type.
     // TODO: try to fit in the biggest supported texture, catch the gl error if it
     // does not fix (OUT_OF_MEMORY), then attempt with smaller texture
+    let dataTypeToUse = VtkDataTypes.UNSIGNED_CHAR;
     let maxTexDim = model.context.getParameter(model.context.MAX_TEXTURE_SIZE);
+    
     if (
       maxTexDim > 4096 &&
       (dataTypeToUse === VtkDataTypes.FLOAT || numComps >= 3)
-    ) {
+    ) { 
       maxTexDim = 4096;
     }
 
     const tryForMaxTexDim = (maxTexDim, maxTries = 4) => {
-
-      console.log({maxTries});
 
       const res = computeScaleOffsets(numComps, numPixelsIn, data);
 
       let volCopyData = (outArray, outIdx, inValue, smin, smax) => {
         outArray[outIdx] = inValue;
       };
-      let dataTypeToUse = VtkDataTypes.UNSIGNED_CHAR;
       // unsigned char gets used as is
       if (dataType === VtkDataTypes.UNSIGNED_CHAR) {
         for (let c = 0; c < numComps; ++c) {
