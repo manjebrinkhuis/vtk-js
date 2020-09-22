@@ -418,37 +418,29 @@ vec4 getColorForValue(vec4 tValue, vec3 posIS, vec3 tstep)
     // to errors on some GPUs.
     const int maxIter = 10;
     
-    for (int i = 1; i <= maxIter; i++) {
-      for (int j = 1; j <= maxIter; j++) {
-    
-        if (i > outlineThickness || j > outlineThickness) {
+    for (int i = -maxIter; i <= maxIter; i++) {
+      for (int j = -maxIter; j <= maxIter; j++) {
+        if (
+          i == 0 || j == 0 || 
+          i > outlineThickness || j > outlineThickness
+        ) {
           continue;
         }
-
-        for (int s = -1; s <= 1; s++) {
-          if (s == 0) {
-            continue;
-          }
           
-          vec4 neighborPixelCoord = vec4(
-            gl_FragCoord.x + (float(s) * float(i)),
-            gl_FragCoord.y + (float(s) * float(j)),
-            gl_FragCoord.z, gl_FragCoord.w
-          );
+        vec4 neighborPixelCoord = vec4(
+          gl_FragCoord.x + float(i),
+          gl_FragCoord.y + float(j),
+          gl_FragCoord.z, gl_FragCoord.w
+        );
 
-          vec3 neighborPosIS = fragCoordToIndexSpace(neighborPixelCoord);
-          vec4 value = getTextureValue(neighborPosIS);
+        vec3 neighborPosIS = fragCoordToIndexSpace(neighborPixelCoord);
+        vec4 value = getTextureValue(neighborPosIS);
 
-          // If any of my neighbours are not the same value as I
-          // am, this means I am on the border of the segment.
-          // We can break the loops
-          if (any(notEqual(value, centerValue))) {
-            pixelOnBorder = true;
-            break;
-          }
-        }
-
-        if (pixelOnBorder == true) {
+        // If any of my neighbours are not the same value as I
+        // am, this means I am on the border of the segment.
+        // We can break the loops
+        if (any(notEqual(value, centerValue))) {
+          pixelOnBorder = true;
           break;
         }
       }
