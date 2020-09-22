@@ -422,7 +422,7 @@ vec4 getColorForValue(vec4 tValue, vec3 posIS, vec3 tstep)
       for (int j = -maxIter; j <= maxIter; j++) {
         if (
           i == 0 || j == 0 || 
-          i > outlineThickness || j > outlineThickness
+          i > outlineThickness || j > outlineThickness ||
           i < -outlineThickness || j < -outlineThickness
         ) {
           continue;
