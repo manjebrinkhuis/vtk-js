@@ -1288,7 +1288,7 @@ function vtkOpenGLTexture(publicAPI, model) {
       );
 
       const hasError = model.context.getError();
-      if (maxTries > -1) {
+      if (hasError && maxTries > -1) {
         publicAPI.destroyTexture()
 
         maxTexDim = maxTexDim / 2;
